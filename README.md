@@ -72,4 +72,3 @@ app/
 ```
 
 **API key neden güvende?** `route.js` sadece sunucuda çalışır. `process.env.GEMINI_API_KEY` hiçbir zaman browser'a gitmez. Next.js bunu garanti eder.
-# title-generator

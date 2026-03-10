@@ -46,15 +46,28 @@ export default function Home() {
         }),
       });
 
-      const data = await res.json();
+      // Eğer response 500 veya başka hata dönerse HTML dönebilir
+      const contentType = res.headers.get('content-type');
+      let data;
+
+      try {
+        data = await res.json();
+      } catch (parseError) {
+        // JSON parse hatası = muhtemelen HTML error page
+        const text = await res.text();
+        throw new Error(
+          `Server hatası: ${res.status} - ${text.substring(0, 100)}`
+        );
+      }
 
       if (!res.ok) {
-        throw new Error(data.error || 'Başlıklar üretilirken hata oluştu');
+        throw new Error(data.error || `Server hatası: ${res.status}`);
       }
 
       setResults(data.results);
     } catch (err) {
-      setError(err.message);
+      console.error('API Error:', err);
+      setError(err.message || 'Bilinmeyen hata oluştu');
     } finally {
       setLoading(false);
     }

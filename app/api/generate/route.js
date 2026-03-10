@@ -4,19 +4,16 @@
 import { NextResponse } from "next/server";
 
 // ─── In-Memory Rate Limiter ───────────────────────────────────────────────────
-// Vercel serverless'ta her cold start'ta sıfırlanır ama başlangıç için yeterli.
-// Production'a geçince Upstash Redis ile değiştir.
-const ipRequestMap = new Map(); // { ip: { count, resetAt } }
+const ipRequestMap = new Map();
 
-const RATE_LIMIT = 10;          // IP başına max istek
-const WINDOW_MS  = 60 * 60 * 1000; // 1 saat penceresi
+const RATE_LIMIT = 10;
+const WINDOW_MS = 60 * 60 * 1000;
 
 function checkRateLimit(ip) {
   const now = Date.now();
   const entry = ipRequestMap.get(ip);
 
   if (!entry || now > entry.resetAt) {
-    // Yeni pencere başlat
     ipRequestMap.set(ip, { count: 1, resetAt: now + WINDOW_MS });
     return { allowed: true, remaining: RATE_LIMIT - 1 };
   }
@@ -41,76 +38,81 @@ Humorous and relatable, playing on tech/work culture jokes and absurdities.
 Still something a real person might semi-seriously put on their profile.`,
 
   absurd: `Generate 3 completely absurd, wildly creative LinkedIn titles. 
-Examples of the vibe: "Kubernetes Asteroid Crasher", "DevOps Bukalemun Supreme", "Interdimensional Bug Whisperer", "Excel Warlord of the Northern Pivot Table".
+Examples of the vibe: "Kubernetes Asteroid Crasher", "DevOps Supreme", "Interdimensional Bug Whisperer", "Excel Warlord".
 Be extremely creative. These should be memorable and hilariously share-worthy.`,
 
   corporate: `Generate 3 peak corporate buzzword LinkedIn titles. 
 Maximum synergy. Maximum thought leadership. Maximum cringe.
-Use words like: Ninja, Rockstar, Evangelist, Visionary, Disruptor, Growth Hacker, Chief [Anything] Officer, Guru, Wizard.
-The kind that makes people roll their eyes but also weirdly respect.`,
+Use words like: Ninja, Rockstar, Evangelist, Visionary, Disruptor, Growth Hacker, Chief Officer, Guru, Wizard.`,
 };
 
 // ─── Route Handler ────────────────────────────────────────────────────────────
 export async function POST(req) {
-  // 1. IP al (Vercel header'ından)
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip") ||
-    "unknown";
-
-  // 2. Rate limit kontrol
-  const rl = checkRateLimit(ip);
-  if (!rl.allowed) {
-    return NextResponse.json(
-      { error: `Saatlik limit doldu. ${Math.ceil(rl.retryAfterSec / 60)} dakika sonra tekrar dene.` },
-      {
-        status: 429,
-        headers: { "Retry-After": String(rl.retryAfterSec) },
-      }
-    );
-  }
-
-  // 3. Request body parse
-  let body;
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Geçersiz istek." }, { status: 400 });
-  }
+    // 1. IP al
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      req.headers.get("x-real-ip") ||
+      "unknown";
 
-  const { currentTitle, skills, industry, tone, generateAll } = body;
+    // 2. Rate limit kontrol
+    const rl = checkRateLimit(ip);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: `Saatlik limit doldu. ${Math.ceil(rl.retryAfterSec / 60)} dakika sonra tekrar dene.` },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rl.retryAfterSec) },
+        }
+      );
+    }
 
-  // 4. Basit input validasyonu
-  if (!currentTitle && (!skills || skills.length === 0)) {
-    return NextResponse.json(
-      { error: "En az mevcut title veya bir skill girilmeli." },
-      { status: 400 }
-    );
-  }
+    // 3. Request body parse
+    let body;
+    try {
+      body = await req.json();
+    } catch (e) {
+      return NextResponse.json(
+        { error: "Geçersiz istek formatı." },
+        { status: 400 }
+      );
+    }
 
-  const validTones = ["realistic", "funny", "absurd", "corporate"];
-  const tonesToGenerate = generateAll
-    ? validTones
-    : [validTones.includes(tone) ? tone : "realistic"];
+    const { currentTitle, skills, industry, tone, generateAll } = body;
 
-  // 5. Gemini API çağrısı
-  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-  if (!GEMINI_API_KEY) {
-    return NextResponse.json(
-      { error: "Sunucu yapılandırma hatası." },
-      { status: 500 }
-    );
-  }
+    // 4. Input validasyonu
+    if (!currentTitle && (!skills || skills.length === 0)) {
+      return NextResponse.json(
+        { error: "En az mevcut title veya bir skill girilmeli." },
+        { status: 400 }
+      );
+    }
 
-  const userContext = [
-    currentTitle && `Current title: ${currentTitle}`,
-    skills?.length > 0 && `Skills & Tools: ${skills.join(", ")}`,
-    industry && `Industry/Field: ${industry}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+    const validTones = ["realistic", "funny", "absurd", "corporate"];
+    const tonesToGenerate = generateAll
+      ? validTones
+      : [validTones.includes(tone) ? tone : "realistic"];
 
-  try {
+    // 5. API Key kontrol
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    if (!GEMINI_API_KEY) {
+      console.error("GEMINI_API_KEY not found in environment variables");
+      return NextResponse.json(
+        { 
+          error: "Sunucu hatası: API key eksik. Vercel ortam değişkenlerini kontrol edin." 
+        },
+        { status: 500 }
+      );
+    }
+
+    const userContext = [
+      currentTitle && `Current title: ${currentTitle}`,
+      skills?.length > 0 && `Skills & Tools: ${skills.join(", ")}`,
+      industry && `Industry/Field: ${industry}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
     const results = {};
 
     for (const t of tonesToGenerate) {
@@ -125,32 +127,42 @@ Rules:
 - Be creative and specific to the user's actual skills/tools.
 - Example format: ["Title One", "Title Two", "Title Three"]`;
 
-      const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 1.1,
-              maxOutputTokens: 300,
-            },
-          }),
+      try {
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 1.1,
+                maxOutputTokens: 300,
+              },
+            }),
+          }
+        );
+
+        if (!geminiRes.ok) {
+          const errData = await geminiRes.text();
+          console.error(`Gemini API error (${t}):`, errData);
+          throw new Error(`Gemini API hatası: ${geminiRes.status}`);
         }
-      );
 
-      if (!geminiRes.ok) {
-        const err = await geminiRes.json();
-        throw new Error(err?.error?.message || "Gemini API hatası");
+        const geminiData = await geminiRes.json();
+        const raw = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+        const clean = raw.replace(/```json|```/g, "").trim();
+        const titles = JSON.parse(clean);
+
+        if (!Array.isArray(titles)) {
+          throw new Error("API yanıtı dizisi değil");
+        }
+
+        results[t] = titles;
+      } catch (err) {
+        console.error(`Error generating ${t}:`, err.message);
+        throw err;
       }
-
-      const geminiData = await geminiRes.json();
-      const raw = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
-      const clean = raw.replace(/```json|```/g, "").trim();
-      const titles = JSON.parse(clean);
-
-      results[t] = titles;
     }
 
     return NextResponse.json(
@@ -158,9 +170,9 @@ Rules:
       { status: 200 }
     );
   } catch (err) {
-    console.error("Generate error:", err);
+    console.error("Route handler error:", err);
     return NextResponse.json(
-      { error: "Title üretilirken hata oluştu: " + err.message },
+      { error: "Başlıklar üretilirken hata oluştu: " + (err.message || "Bilinmeyen hata") },
       { status: 500 }
     );
   }

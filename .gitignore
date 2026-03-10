@@ -9,6 +9,7 @@
 # Build
 /build
 /dist
+/.next
 
 # Environment variables
 .env

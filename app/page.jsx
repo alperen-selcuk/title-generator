@@ -12,10 +12,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const addSkill = () => {
-    setSkills([...skills, '']);
-  };
-
+  const addSkill = () => setSkills([...skills, '']);
+  
   const removeSkill = (index) => {
     if (skills.length > 1) {
       setSkills(skills.filter((_, i) => i !== index));
@@ -34,7 +32,7 @@ export default function Home() {
     setError('');
 
     try {
-      const res = await fetch('/api/generate', {
+      const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -46,63 +44,41 @@ export default function Home() {
         }),
       });
 
-      // Eğer response 500 veya başka hata dönerse HTML dönebilir
-      const contentType = res.headers.get('content-type');
-      let data;
-
-      try {
-        data = await res.json();
-      } catch (parseError) {
-        // JSON parse hatası = muhtemelen HTML error page
-        const text = await res.text();
-        throw new Error(
-          `Server hatası: ${res.status} - ${text.substring(0, 100)}`
-        );
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(errorData.error || `HTTP Error ${response.status}`);
       }
 
-      if (!res.ok) {
-        throw new Error(data.error || `Server hatası: ${res.status}`);
-      }
-
-      setResults(data.results);
+      const data = await response.json();
+      setResults(data.results || {});
     } catch (err) {
-      console.error('API Error:', err);
-      setError(err.message || 'Bilinmeyen hata oluştu');
+      setError(err instanceof Error ? err.message : 'Hata oluştu');
     } finally {
       setLoading(false);
     }
   };
 
-  const toneLabels = {
-    realistic: 'Gerçekçi',
-    funny: 'Komik',
-    absurd: 'Saçma',
-    corporate: 'Kurumsal',
-  };
-
   return (
-    <div style={styles.page}>
+    <div style={styles.container}>
       <div style={styles.wrapper}>
         <header style={styles.header}>
           <h1 style={styles.title}>LinkedIn Title Generator</h1>
-          <p style={styles.description}>Gemini AI ile profesyonel LinkedIn başlıkları üretin</p>
+          <p style={styles.subtitle}>Gemini AI ile profesyonel LinkedIn başlıkları üretin</p>
         </header>
 
-        <main style={styles.card}>
+        <div style={styles.card}>
           <form onSubmit={handleSubmit} style={styles.form}>
-            {/* Current Title */}
             <div style={styles.formGroup}>
-              <label style={styles.label}>Mevcut Başlık (İsteğe Bağlı)</label>
+              <label style={styles.label}>Mevcut Başlık</label>
               <input
                 type="text"
                 value={currentTitle}
                 onChange={(e) => setCurrentTitle(e.target.value)}
-                style={styles.input}
                 placeholder="Örn: Frontend Developer"
+                style={styles.input}
               />
             </div>
 
-            {/* Skills */}
             <div style={styles.formGroup}>
               <label style={styles.label}>Beceriler</label>
               {skills.map((skill, index) => (
@@ -111,8 +87,8 @@ export default function Home() {
                     type="text"
                     value={skill}
                     onChange={(e) => updateSkill(index, e.target.value)}
-                    style={{ ...styles.input, flex: 1 }}
                     placeholder={`Beceri ${index + 1}`}
+                    style={{ ...styles.input, flex: 1 }}
                   />
                   {skills.length > 1 && (
                     <button
@@ -128,26 +104,24 @@ export default function Home() {
               <button
                 type="button"
                 onClick={addSkill}
-                style={styles.addSkillBtn}
+                style={styles.addBtn}
               >
                 + Beceri Ekle
               </button>
             </div>
 
-            {/* Industry */}
             <div style={styles.formGroup}>
-              <label style={styles.label}>Sektör (İsteğe Bağlı)</label>
+              <label style={styles.label}>Sektör</label>
               <input
                 type="text"
                 value={industry}
                 onChange={(e) => setIndustry(e.target.value)}
+                placeholder="Örn: Teknoloji"
                 style={styles.input}
-                placeholder="Örn: Teknoloji, Finans, Sağlık"
               />
             </div>
 
-            {/* Tone & Generate All */}
-            <div style={styles.twoColumns}>
+            <div style={styles.row}>
               <div style={styles.formGroup}>
                 <label style={styles.label}>Başlık Türü</label>
                 <select
@@ -171,12 +145,11 @@ export default function Home() {
                     onChange={(e) => setGenerateAll(e.target.checked)}
                     style={{ marginRight: '0.5rem' }}
                   />
-                  Tüm başlıkları oluştur
+                  Tüm türleri oluştur
                 </label>
               </div>
             </div>
 
-            {/* Submit Button */}
             <button
               type="submit"
               disabled={loading}
@@ -186,34 +159,33 @@ export default function Home() {
                 cursor: loading ? 'not-allowed' : 'pointer',
               }}
             >
-              {loading ? 'Başlıklar Üretiliyor...' : 'Başlıklar Üret'}
+              {loading ? 'Üretiliyor...' : 'Başlıklar Üret'}
             </button>
           </form>
-        </main>
+        </div>
 
-        {/* Error Message */}
         {error && (
           <div style={styles.errorBox}>
             <p style={styles.errorText}>{error}</p>
           </div>
         )}
 
-        {/* Results */}
         {Object.keys(results).length > 0 && (
           <div style={styles.card}>
-            <h2 style={styles.resultsTitle}>Üretilen Başlıklar</h2>
-
+            <h2 style={styles.resultsTitle}>Sonuçlar</h2>
             {generateAll ? (
               <div style={styles.resultsGrid}>
-                {['realistic', 'funny', 'absurd', 'corporate'].map((t) => (
-                  <div key={t} style={styles.resultCategory}>
-                    <h3 style={styles.categoryTitle}>{toneLabels[t]}</h3>
-                    <ul style={styles.resultsList}>
-                      {results[t]?.map((title, idx) => (
-                        <li key={idx} style={styles.resultItem}>
-                          <span style={styles.bullet}>•</span>
-                          <span>{title}</span>
-                        </li>
+                {Object.entries(results).map(([type, titles]) => (
+                  <div key={type}>
+                    <h3 style={styles.categoryTitle}>
+                      {type === 'realistic' && 'Gerçekçi'}
+                      {type === 'funny' && 'Komik'}
+                      {type === 'absurd' && 'Saçma'}
+                      {type === 'corporate' && 'Kurumsal'}
+                    </h3>
+                    <ul style={styles.titleList}>
+                      {Array.isArray(titles) && titles.map((title, idx) => (
+                        <li key={idx} style={styles.titleItem}>• {title}</li>
                       ))}
                     </ul>
                   </div>
@@ -221,13 +193,9 @@ export default function Home() {
               </div>
             ) : (
               <div>
-                <h3 style={styles.categoryTitle}>{toneLabels[tone]}</h3>
-                <ul style={styles.resultsList}>
-                  {results[tone]?.map((title, idx) => (
-                    <li key={idx} style={styles.resultItem}>
-                      <span style={styles.bullet}>•</span>
-                      <span>{title}</span>
-                    </li>
+                <ul style={styles.titleList}>
+                  {Array.isArray(results[tone]) && results[tone].map((title, idx) => (
+                    <li key={idx} style={styles.titleItem}>• {title}</li>
                   ))}
                 </ul>
               </div>
@@ -240,11 +208,10 @@ export default function Home() {
 }
 
 const styles = {
-  page: {
+  container: {
     minHeight: '100vh',
-    background: 'linear-gradient(135deg, #e8f1ff 0%, #e6e8ff 100%)',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
     padding: '2rem 1rem',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif',
   },
   wrapper: {
     maxWidth: '900px',
@@ -253,24 +220,24 @@ const styles = {
   header: {
     textAlign: 'center',
     marginBottom: '2rem',
+    color: 'white',
   },
   title: {
     fontSize: '2.5rem',
-    fontWeight: 'bold',
-    color: '#1f2937',
     margin: '0 0 0.5rem 0',
+    fontWeight: 'bold',
   },
-  description: {
+  subtitle: {
     fontSize: '1rem',
-    color: '#6b7280',
     margin: 0,
+    opacity: 0.9,
   },
   card: {
-    backgroundColor: 'white',
-    borderRadius: '0.75rem',
-    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)',
+    background: 'white',
+    borderRadius: '1rem',
     padding: '2rem',
     marginBottom: '2rem',
+    boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
   },
   form: {
     display: 'flex',
@@ -282,17 +249,18 @@ const styles = {
     flexDirection: 'column',
   },
   label: {
-    fontSize: '0.9rem',
+    fontSize: '0.95rem',
     fontWeight: '600',
-    color: '#374151',
     marginBottom: '0.5rem',
+    color: '#333',
   },
   input: {
     padding: '0.75rem 1rem',
-    border: '1px solid #d1d5db',
+    border: '2px solid #e0e0e0',
     borderRadius: '0.5rem',
     fontSize: '1rem',
     fontFamily: 'inherit',
+    transition: 'border-color 0.2s',
   },
   skillRow: {
     display: 'flex',
@@ -301,25 +269,26 @@ const styles = {
   },
   deleteBtn: {
     padding: '0.75rem 1rem',
-    backgroundColor: '#ef4444',
+    background: '#ef4444',
     color: 'white',
     border: 'none',
     borderRadius: '0.5rem',
-    fontSize: '1.2rem',
     cursor: 'pointer',
+    fontSize: '1.2rem',
     fontWeight: 'bold',
   },
-  addSkillBtn: {
-    padding: '0.5rem 0',
-    backgroundColor: 'transparent',
-    color: '#2563eb',
+  addBtn: {
+    marginTop: '0.5rem',
+    padding: 0,
+    background: 'none',
     border: 'none',
+    color: '#667eea',
     cursor: 'pointer',
-    fontSize: '0.9rem',
+    fontSize: '0.95rem',
     fontWeight: '500',
     textAlign: 'left',
   },
-  twoColumns: {
+  row: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
     gap: '1rem',
@@ -327,24 +296,23 @@ const styles = {
   checkboxLabel: {
     display: 'flex',
     alignItems: 'center',
-    fontSize: '0.9rem',
-    color: '#374151',
     cursor: 'pointer',
+    fontSize: '0.95rem',
   },
   submitBtn: {
     padding: '0.75rem 1.5rem',
-    backgroundColor: '#3b82f6',
+    background: '#667eea',
     color: 'white',
     border: 'none',
     borderRadius: '0.5rem',
     fontSize: '1rem',
     fontWeight: '600',
     cursor: 'pointer',
-    marginTop: '1rem',
+    marginTop: '0.5rem',
   },
   errorBox: {
-    backgroundColor: '#fee2e2',
-    border: '1px solid #fecaca',
+    background: '#fee2e2',
+    border: '2px solid #fca5a5',
     borderRadius: '0.5rem',
     padding: '1rem',
     marginBottom: '2rem',
@@ -352,44 +320,33 @@ const styles = {
   errorText: {
     color: '#991b1b',
     margin: 0,
+    fontSize: '0.95rem',
   },
   resultsTitle: {
     fontSize: '1.5rem',
     fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: '1.5rem',
-    margin: '0 0 1.5rem 0',
+    margin: '0 0 1rem 0',
+    color: '#333',
   },
   resultsGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '2rem',
-  },
-  resultCategory: {
-    marginBottom: '1.5rem',
+    gap: '1.5rem',
   },
   categoryTitle: {
     fontSize: '1.1rem',
     fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: '0.75rem',
     margin: '0 0 0.75rem 0',
+    color: '#667eea',
   },
-  resultsList: {
+  titleList: {
     listStyle: 'none',
     padding: 0,
     margin: 0,
   },
-  resultItem: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    marginBottom: '0.75rem',
-    color: '#4b5563',
+  titleItem: {
+    padding: '0.5rem 0',
+    color: '#555',
     fontSize: '0.95rem',
-  },
-  bullet: {
-    color: '#3b82f6',
-    marginRight: '0.5rem',
-    fontWeight: 'bold',
   },
 };
